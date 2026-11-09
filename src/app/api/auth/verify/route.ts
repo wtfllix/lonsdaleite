@@ -1,0 +1,25 @@
+import {randomUUID} from 'node:crypto';
+import {NextResponse} from 'next/server';
+import {api,body,fail,digest,equalDigest,makeToken,rateLimit} from '@/lib/server';
+import {emailSchema} from '@/lib/validation';
+import {query} from '@/lib/db';
+import type {User} from '@/lib/tour';
+export const POST=api(async request=>{
+ const input=await body(request),parsed=emailSchema.safeParse(input.email);
+ if(!parsed.success||!/^\d{6}$/.test(input.code))fail(400,'请输入邮箱和六位验证码 / Enter your email and six-digit code');
+ const email=parsed.data;
+ await rateLimit('verify:'+digest(email),20,600000);
+ const [row]=await query<{digest:string}>('UPDATE otp SET attempts=attempts+1 WHERE email=$1 AND expires_at>$2 AND attempts<5 RETURNING digest',[email,Date.now()]);
+ if(!row||!equalDigest(row.digest,digest(email+':'+input.code)))fail(400,'验证码错误或已过期 / Invalid or expired code');
+ const consumed=await query('DELETE FROM otp WHERE email=$1 AND digest=$2 RETURNING email',[email,row.digest]);
+ if(!consumed.length)fail(400,'验证码已使用 / Code already used');
+ const admins=(process.env.ADMIN_EMAILS||'').split(',').map(s=>s.trim().toLowerCase());
+ const role=admins.includes(email)?'admin':'fan';
+ const [user]=await query<User>('INSERT INTO users (id,email,nickname,role,created_at) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (email) DO UPDATE SET role=$4 RETURNING id,email,nickname,role',[randomUUID(),email,'',role,Date.now()]);
+ const token=makeToken(),expires=Date.now()+30*86400000;
+ await query('INSERT INTO sessions (token,user_id,expires_at) VALUES ($1,$2,$3)',[digest(token),user.id,expires]);
+ await query('DELETE FROM sessions WHERE expires_at<$1',[Date.now()]);
+ const response=NextResponse.json({user});
+ response.cookies.set('lonsdaleite_session',token,{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'lax',path:'/',expires:new Date(expires)});
+ return response;
+});

@@ -1,0 +1,28 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    env_file: .env.production
+    environment:
+      DATABASE_URL: postgresql://lonsdaleite:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the Compose environment}@db:5432/lonsdaleite
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lonsdaleite
+      POSTGRES_DB: lonsdaleite
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the Compose environment}
+    volumes:
+      - archive-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lonsdaleite -d lonsdaleite"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+volumes:
+  archive-db:

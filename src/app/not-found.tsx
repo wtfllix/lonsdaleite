@@ -1,0 +1,1 @@
+export default function NotFound(){return <main id="main" className="not-found"><p className="eyebrow">A DIFFERENT PATH TO THE LIGHT</p><h1>404</h1><p>这一页还未被点亮。 / This page hasn’t found its light.</p><a href="/" className="outline-button">回到旅程 / Back to the journey ↗</a></main>;}
